@@ -214,7 +214,10 @@ class BiLSTM:
             probs = self.softmax(logits)
             outputs.append(probs)
         
-        return np.vstack(outputs)
+        y_probs = np.array(outputs)
+        if y_probs.ndim == 1:
+            y_probs = y_probs.reshape(1, -1)  # shape (1, V)
+        return y_probs
 
     def backward(self, targets):
         T = len(self.last_outputs)
