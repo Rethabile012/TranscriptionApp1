@@ -214,7 +214,7 @@ class BiLSTM:
             probs = self.softmax(logits)
             outputs.append(probs)
         
-        return np.array(outputs).squeeze()
+        return np.vstack(outputs)
 
     def backward(self, targets):
         T = len(self.last_outputs)
