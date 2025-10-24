@@ -121,7 +121,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             total_loss += ctc_loss
 
             # Backpropagate CTC
-            grads = model.backward_ctc(y_probs, target_indices, input_lengths, target_lengths)
+            grads = model.backward(y_probs, target_indices, input_lengths, target_lengths)
 
             # Update weights
             optimizer.step(grads)
@@ -148,7 +148,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             y_probs = np.exp(y_probs - np.max(y_probs, axis=1, keepdims=True))
             y_probs /= np.sum(y_probs, axis=1, keepdims=True)
 
-            pred_text = decoder.beam_search(y_probs)
+            pred_text = decoder.greedy_decode(y_probs)
             val_cer += cer(transcript, pred_text)
             val_count += 1
 
