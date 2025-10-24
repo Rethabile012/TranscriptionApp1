@@ -221,44 +221,35 @@ class BiLSTM:
             y_probs = y_probs.reshape(1, -1)  # shape (1, V)
         return y_probs
 
-    def backward(self, y_probs, targets, input_lengths=None, target_lengths=None):
-        T = len(self.last_outputs)
-        assert T == len(targets), "targets length must match outputs length"
+    def backward(self, dY):
+        T = len(dY)
 
         # grads for Wy/by
         dWy = np.zeros_like(self.Wy)
         dby = np.zeros_like(self.by)
-        loss = 0.0
 
-        # For collecting dh contributions per time-step for fwd and bwd LSTMs
-        dh_f_per_t = [np.zeros((self.hidden_size, 1)) for _ in range(T)]
-        dh_b_per_t = [np.zeros((self.hidden_size, 1)) for _ in range(T)]
+        # Initialize dh contributions for LSTMs
+        dh_f_per_t = [np.zeros((self.forward_lstm.hidden_size, 1)) for _ in range(T)]
+        dh_b_per_t = [np.zeros((self.backward_lstm.hidden_size, 1)) for _ in range(T)]
 
         for t in range(T):
-            y_pred = self.last_outputs[t]  # (V,1)
-            y_true = targets[t]            # (V,1)
-            loss -= np.sum(y_true * np.log(y_pred + 1e-9))
-            dy = y_pred - y_true           # (V,1)
+            dy = dY[t].reshape(-1,1)   # (V,1)
             dWy += dy @ self.last_concats[t].T
             dby += dy
 
             # propagate into concatenated hidden
-            dconcat = self.Wy.T @ dy  # (2H,1)
-            dh_f = dconcat[:self.hidden_size, :]
-            dh_b = dconcat[self.hidden_size:, :]
+            dconcat = self.Wy.T @ dy
+            dh_f_per_t[t] += dconcat[:self.forward_lstm.hidden_size, :]
+            dh_b_per_t[t] += dconcat[self.forward_lstm.hidden_size:, :]
 
-            dh_f_per_t[t] += dh_f
-            dh_b_per_t[t] += dh_b
-
-        # update Wy and by (SGD)
         # clip grads
         np.clip(dWy, -5.0, 5.0, out=dWy)
         np.clip(dby, -5.0, 5.0, out=dby)
+
+        # update parameters
         self.Wy -= self.lr * dWy
         self.by -= self.lr * dby
 
-        
-        self.fwd_cell.backward_through_time(dh_f_per_t, lr=self.lr)
-        self.bwd_cell.backward_through_time(dh_b_per_t, lr=self.lr)
-
-        return loss / max(1, T)
+        # backprop through LSTMs
+        self.forward_lstm.backward_through_time(dh_f_per_t, lr=self.lr)
+        self.backward_lstm.backward_through_time(dh_b_per_t, lr=self.lr)

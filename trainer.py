@@ -88,7 +88,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
     optimizer = AdamOptimizer(params=model.get_params(), lr=lr)
 
     best_val_cer = float("inf")
-    history = {"train_loss": [], "train_cer": [], "val_cer": [], "val_wer": []}
+    history = {"train_loss": [], "train_cer": [], "val_cer": []}
 
     print(f"Starting training for {epochs} epochs...")
     for epoch in range(epochs):
@@ -121,10 +121,11 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             total_loss += ctc_loss
 
             # Backpropagate CTC
-            grads = model.backward(y_probs, target_indices, input_lengths, target_lengths)
+            dY = ctc_loss_fn.backward(y_probs, target_indices, input_lengths, target_lengths)
+            model.backward(dY)
 
             # Update weights
-            optimizer.step(grads)
+            
 
             # Compute CER
             pred_indices = np.argmax(y_probs, axis=1)
