@@ -163,12 +163,16 @@ class BiLSTM:
         self.last_concats = []
         outputs = []
 
-        for x in inputs:
-            # x shape: (input_size, 1)
-            # Simple hidden state update (replace with actual BiLSTM logic)
-            h = np.tanh(self.Wxh @ x + self.bh)  # shape (2*hidden_size, 1)
+        for x in inputs:  # x shape: (input_size, 1)
+            # forward LSTM hidden (fake demo)
+            h_forward = np.tanh(np.random.randn(self.hidden_size, 1))  
+            # backward LSTM hidden (fake demo)
+            h_backward = np.tanh(np.random.randn(self.hidden_size, 1))
+            
+            h = np.vstack([h_forward, h_backward])  # shape (2*hidden_size, 1)
             self.last_concats.append(h)
-            y = self.Why @ h + self.by  # shape (output_size, 1)
+
+            y = self.Why @ h + self.by  # shape (V, 1)
             outputs.append(y)
 
         return outputs
