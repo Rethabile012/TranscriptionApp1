@@ -212,6 +212,7 @@ class BiLSTM:
 
         for t in range(T):
             h = np.vstack([h_forward_seq[t], h_backward_seq[t]])  # (2*hidden_size,1)
+            h = h.reshape(-1,1)
             self.last_concats.append(h)
             y = self.Why @ h + self.by  # (V,1)
             outputs.append(y)
@@ -227,6 +228,8 @@ class BiLSTM:
 
         for t in reversed(range(len(self.last_concats))):
             h = self.last_concats[t]
+            if h.shape[1] != 1:
+                h = h.T
             dy = dY_list[t]
 
             dWhy += dy @ h.T
