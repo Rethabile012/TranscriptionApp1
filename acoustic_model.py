@@ -140,7 +140,7 @@ class LSTMCell:
         # clear caches after backward
         self.caches = []
 
-        # return last dh_next to allow stacking layers (not used here)
+        # return last dh_next to allow stacking layers 
         return dh_next, dc_next
 
 
