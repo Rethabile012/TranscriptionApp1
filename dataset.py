@@ -2,7 +2,7 @@ import os
 from extractedmfccs import AudioProcessor  
 
 class Dataset:
-    def __init__(self, audio_root="TrainingSet/audio", transcript_root="TrainingSet/transcripts"):
+    def __init__(self, audio_root="/kaggle/input/transcriptions/Pipeline 2/TrainingSet/audio", transcript_root="/kaggle/input/transcriptions/Pipeline 2/TrainingSet/transcripts"):
         self.audio_root = audio_root
         self.transcript_root = transcript_root
         self.processor = AudioProcessor(audio_root)
@@ -48,7 +48,7 @@ class Dataset:
 
         return dataset
 
-    def get_validation_data(self, audio_root="ValidationSet/Audio", transcript_root="ValidationSet/Transcripts"):
+    def get_validation_data(self, audio_root="/kaggle/input/transcriptions/Pipeline 2/ValidationSet/audio", transcript_root="/kaggle/input/transcriptions/Pipeline 2/ValidationSet/transcripts"):
         val_processor = AudioProcessor(audio_root)
         validation_data = []
 
@@ -77,7 +77,7 @@ class Dataset:
 
         return validation_data
     
-    def get_test_data(self, audio_root="TestSet/Audio", transcript_root="TestSet/Transcripts"):
+    def get_test_data(self, audio_root="/kaggle/input/transcriptions/Pipeline 2/TestSet/audio", transcript_root="/kaggle/input/transcriptions/Pipeline 2/TestSet/transcripts"):
         test_processor = AudioProcessor(audio_root)
         test_data = []
 
