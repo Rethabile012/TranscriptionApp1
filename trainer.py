@@ -121,11 +121,8 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             total_loss += ctc_loss
 
             # Backpropagate CTC
-            dY = ctc_loss_fn.backward(y_probs, target_indices, input_lengths, target_lengths)
-            model.backward(dY)
-
-            # Update weights
-            
+            #dY = ctc_loss_fn.backward(y_probs, target_indices, input_lengths, target_lengths)
+            #model.backward(dY)
 
             # Compute CER
             pred_indices = np.argmax(y_probs, axis=1)

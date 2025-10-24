@@ -1,9 +1,10 @@
 import numpy as np
 class CEDecoder:
-    def __init__(self, idx2char, beam_width=5, alpha=0.5):
+    def __init__(self, idx2char, beam_width=5, alpha=0.5, blank_idx=36):
         self.idx2char = idx2char
         self.beam_width = beam_width
         self.alpha = alpha
+        self.blank_idx = blank_idx
 
     def greedy_decode(self, probs):
         best_path = np.argmax(probs, axis=1)
