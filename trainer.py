@@ -5,7 +5,8 @@ from decoder import CEDecoder
 from ctcloss import CTCLoss
 
 class AdamOptimizer:
-    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self,params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        self.params = params
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
