@@ -148,6 +148,19 @@ class BiLSTM:
     def __init__(self, input_size, hidden_size, output_size):
         self.forward_lstm = LSTMCell(input_size, hidden_size)
         self.backward_lstm = LSTMCell(input_size, hidden_size)
+        self.Wy = np.random.randn(output_size, 2 * hidden_size) * 0.01
+        self.by = np.zeros((output_size, 1))
+
+    def get_params(self):
+        # Return all trainable parameters as a list
+        params = [
+            self.fwd_cell.Wf, self.fwd_cell.Wi, self.fwd_cell.Wc, self.fwd_cell.Wo,
+            self.fwd_cell.bf, self.fwd_cell.bi, self.fwd_cell.bc, self.fwd_cell.bo,
+            self.bwd_cell.Wf, self.bwd_cell.Wi, self.bwd_cell.Wc, self.bwd_cell.Wo,
+            self.bwd_cell.bf, self.bwd_cell.bi, self.bwd_cell.bc, self.bwd_cell.bo,
+            self.Wy, self.by
+        ]
+        return params
         
         # Fully connected layer for classification (hidden*2 → vocab size)
         self.Wy = np.random.randn(output_size, hidden_size * 2) * 0.1
