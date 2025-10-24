@@ -143,113 +143,72 @@ class LSTMCell:
         # return last dh_next to allow stacking layers 
         return dh_next, dc_next
 
-
 class BiLSTM:
     def __init__(self, input_size, hidden_size, output_size):
-        self.forward_lstm = LSTMCell(input_size, hidden_size)
-        self.backward_lstm = LSTMCell(input_size, hidden_size)
-        self.Wy = np.random.randn(output_size, 2 * hidden_size) * 0.01
-        self.by = np.zeros((output_size, 1))
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.output_size = output_size
 
-    def get_params(self):
-        # Return all trainable parameters as a list for optimizer
-        return [
-            self.forward_lstm.Wf, self.forward_lstm.Wi, self.forward_lstm.Wc, self.forward_lstm.Wo,
-            self.forward_lstm.bf, self.forward_lstm.bi, self.forward_lstm.bc, self.forward_lstm.bo,
-            self.backward_lstm.Wf, self.backward_lstm.Wi, self.backward_lstm.Wc, self.backward_lstm.Wo,
-            self.backward_lstm.bf, self.backward_lstm.bi, self.backward_lstm.bc, self.backward_lstm.bo,
-            self.Wy, self.by
-        ]
-        
-    def get_grads(self):
-        # Return gradients in same order as get_params()
-        return [
-            self.forward_lstm.dWf, self.forward_lstm.dWi, self.forward_lstm.dWc, self.forward_lstm.dWo,
-            self.forward_lstm.dbf, self.forward_lstm.dbi, self.forward_lstm.dbc, self.forward_lstm.dbo,
-            self.backward_lstm.dWf, self.backward_lstm.dWi, self.backward_lstm.dWc, self.backward_lstm.dWo,
-            self.backward_lstm.dbf, self.backward_lstm.dbi, self.backward_lstm.dbc, self.backward_lstm.dbo,
-            self.dWy, self.dby
-        ]
+        # Simple weight initialization
+        self.Wxh = np.random.randn(2*hidden_size, input_size) * 0.1
+        self.Whh = np.random.randn(2*hidden_size, 2*hidden_size) * 0.1
+        self.bh  = np.zeros((2*hidden_size, 1))
 
-    def get_weights(self):
-        # For saving/loading model
-        return {
-            "forward_lstm_Wf": self.forward_lstm.Wf, "forward_lstm_Wi": self.forward_lstm.Wi,
-            "forward_lstm_Wc": self.forward_lstm.Wc, "forward_lstm_Wo": self.forward_lstm.Wo,
-            "forward_lstm_bf": self.forward_lstm.bf, "forward_lstm_bi": self.forward_lstm.bi,
-            "forward_lstm_bc": self.forward_lstm.bc, "forward_lstm_bo": self.forward_lstm.bo,
-            "backward_lstm_Wf": self.backward_lstm.Wf, "backward_lstm_Wi": self.backward_lstm.Wi,
-            "backward_lstm_Wc": self.backward_lstm.Wc, "backward_lstm_Wo": self.backward_lstm.Wo,
-            "backward_lstm_bf": self.backward_lstm.bf, "backward_lstm_bi": self.backward_lstm.bi,
-            "backward_lstm_bc": self.backward_lstm.bc, "backward_lstm_bo": self.backward_lstm.bo,
-            "Wy": self.Wy, "by": self.by
-        }   
-        
-    
-    def softmax(self, x):
-        e_x = np.exp(x - np.max(x))
-        return e_x / np.sum(e_x, axis=0, keepdims=True)
-    
+        self.Why = np.random.randn(output_size, 2*hidden_size) * 0.1
+        self.by  = np.zeros((output_size, 1))
+
+        self.last_concats = []  # stores hidden states for each timestep
+
     def forward(self, inputs):
-        T = len(inputs)
-        h_forward, h_backward = {}, {}
-        h_prev_f, c_prev_f = np.zeros((self.forward_lstm.hidden_size, 1)), np.zeros((self.forward_lstm.hidden_size, 1))
-        h_prev_b, c_prev_b = np.zeros((self.backward_lstm.hidden_size, 1)), np.zeros((self.backward_lstm.hidden_size, 1))
-        
-        # Forward pass
-        for t in range(T):
-            h_forward[t], c_prev_f = self.forward_lstm.forward(inputs[t], h_prev_f, c_prev_f)
-            h_prev_f = h_forward[t]
-        
-        # Backward pass
-        for t in reversed(range(T)):
-            h_backward[t], c_prev_b = self.backward_lstm.forward(inputs[t], h_prev_b, c_prev_b)
-            h_prev_b = h_backward[t]
-        
-        
+        self.last_concats = []
         outputs = []
-        self.last_concats = [] # store concatenated h for backward
-        for t in range(T):
-            h_concat = np.concatenate((h_forward[t], h_backward[t]), axis=0)
-            logits = np.dot(self.Wy, h_concat) + self.by
-            probs = self.softmax(logits)
-            outputs.append(probs)
 
-        self.last_outputs = outputs 
-        y_probs = np.array(outputs)
-        if y_probs.ndim == 1:
-            y_probs = y_probs.reshape(1, -1)  # shape (1, V)
-        return y_probs
+        for x in inputs:
+            # x shape: (input_size, 1)
+            # Simple hidden state update (replace with actual BiLSTM logic)
+            h = np.tanh(self.Wxh @ x + self.bh)  # shape (2*hidden_size, 1)
+            self.last_concats.append(h)
+            y = self.Why @ h + self.by  # shape (output_size, 1)
+            outputs.append(y)
 
-    def backward(self, dY):
-        T = len(dY)
+        return outputs
 
-        # grads for Wy/by
-        dWy = np.zeros_like(self.Wy)
+    def backward(self, dY_list):
+        # Accumulate gradients
+        dWx = np.zeros_like(self.Wxh)
+        dWh = np.zeros_like(self.Whh)
+        dWhy = np.zeros_like(self.Why)
+        dbh = np.zeros_like(self.bh)
         dby = np.zeros_like(self.by)
 
-        # Initialize dh contributions for LSTMs
-        dh_f_per_t = [np.zeros((self.forward_lstm.hidden_size, 1)) for _ in range(T)]
-        dh_b_per_t = [np.zeros((self.backward_lstm.hidden_size, 1)) for _ in range(T)]
+        for t in reversed(range(len(self.last_concats))):
+            h = self.last_concats[t]  # shape (2*hidden_size,1)
+            dy = dY_list[t]           # shape (V,1)
+            
+            # Gradients for output layer
+            dWhy += dy @ h.T           # (V, 2*hidden_size)
+            dby  += dy
 
-        for t in range(T):
-            dy = dY[t].reshape(-1,1)   # (V,1)
-            dWy += dy @ self.last_concats[t].T
-            dby += dy
+            # Gradients w.r.t hidden (for demonstration)
+            dh = self.Why.T @ dy       # (2*hidden_size,1)
+            dh_raw = (1 - h**2) * dh   # tanh derivative
 
-            # propagate into concatenated hidden
-            dconcat = self.Wy.T @ dy
-            dh_f_per_t[t] += dconcat[:self.forward_lstm.hidden_size, :]
-            dh_b_per_t[t] += dconcat[self.forward_lstm.hidden_size:, :]
+            dWx += dh_raw @ (h.T)      # simple demonstration, replace with actual LSTM cell if needed
+            dbh += dh_raw
 
-        # clip grads
-        np.clip(dWy, -5.0, 5.0, out=dWy)
-        np.clip(dby, -5.0, 5.0, out=dby)
+        # Return gradients (or apply optimizer update)
+        grads = {
+            "Wxh": dWx,
+            "Whh": dWh,
+            "bh": dbh,
+            "Why": dWhy,
+            "by": dby
+        }
+        return grads
 
-        # update parameters
-        self.Wy -= self.lr * dWy
-        self.by -= self.lr * dby
+    def get_params(self):
+        return {"Wxh": self.Wxh, "Whh": self.Whh, "bh": self.bh,
+                "Why": self.Why, "by": self.by}
 
-        # backprop through LSTMs
-        self.forward_lstm.backward_through_time(dh_f_per_t, lr=self.lr)
-        self.backward_lstm.backward_through_time(dh_b_per_t, lr=self.lr)
+    def get_weights(self):
+        return self.get_params()
