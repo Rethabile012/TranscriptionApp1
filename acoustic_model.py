@@ -206,14 +206,16 @@ class BiLSTM:
             h_backward[t], c_prev_b = self.backward_lstm.forward(inputs[t], h_prev_b, c_prev_b)
             h_prev_b = h_backward[t]
         
-        # Concatenate and apply softmax
+        
         outputs = []
+        self.last_concats = [] # store concatenated h for backward
         for t in range(T):
             h_concat = np.concatenate((h_forward[t], h_backward[t]), axis=0)
             logits = np.dot(self.Wy, h_concat) + self.by
             probs = self.softmax(logits)
             outputs.append(probs)
-        
+
+        self.last_outputs = outputs 
         y_probs = np.array(outputs)
         if y_probs.ndim == 1:
             y_probs = y_probs.reshape(1, -1)  # shape (1, V)

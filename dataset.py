@@ -42,7 +42,7 @@ class Dataset:
                         transcript_text = self.load_text(transcript_path)
 
                         dataset.append((mfcc, transcript_text))
-                        print(f"Loaded pair: {filename} -> {len(transcript_text.split())} words")
+                        print(f"Loaded pair: {filename} -> {len(transcript_text.split())} characters")
                     except Exception as e:
                         print(f"Failed to process {audio_path}: {e}")
 
@@ -71,7 +71,7 @@ class Dataset:
                         transcript_text = self.load_text(transcript_path)
 
                         validation_data.append((mfcc, transcript_text))
-                        print(f"Loaded validation pair: {filename} -> {len(transcript_text.split())} words")
+                        print(f"Loaded validation pair: {filename} -> {len(transcript_text.split())} characters")
                     except Exception as e:
                         print(f"Failed to process {audio_path}: {e}")
 
