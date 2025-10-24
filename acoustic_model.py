@@ -153,6 +153,32 @@ class BiLSTM:
         self.forward_lstm = LSTMCell(input_size, hidden_size)
         self.backward_lstm = LSTMCell(input_size, hidden_size)
 
+        def get_params(self):
+            
+            return {
+                "Why": self.Why,
+                "by": self.by,
+                "forward_Wf": self.forward_lstm.Wf,
+                "forward_Wi": self.forward_lstm.Wi,
+                "forward_Wc": self.forward_lstm.Wc,
+                "forward_Wo": self.forward_lstm.Wo,
+                "forward_bf": self.forward_lstm.bf,
+                "forward_bi": self.forward_lstm.bi,
+                "forward_bc": self.forward_lstm.bc,
+                "forward_bo": self.forward_lstm.bo,
+                "backward_Wf": self.backward_lstm.Wf,
+                "backward_Wi": self.backward_lstm.Wi,
+                "backward_Wc": self.backward_lstm.Wc,
+                "backward_Wo": self.backward_lstm.Wo,
+                "backward_bf": self.backward_lstm.bf,
+                "backward_bi": self.backward_lstm.bi,
+                "backward_bc": self.backward_lstm.bc,
+                "backward_bo": self.backward_lstm.bo
+            }
+        def get_weights(self):
+            return self.get_params()
+
+
         self.Why = np.random.randn(output_size, 2*hidden_size) * 0.1
         self.by  = np.zeros((output_size, 1))
 
