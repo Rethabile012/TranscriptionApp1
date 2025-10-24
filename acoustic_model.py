@@ -152,6 +152,10 @@ class BiLSTM:
         # forward and backward LSTM cells
         self.forward_lstm = LSTMCell(input_size, hidden_size)
         self.backward_lstm = LSTMCell(input_size, hidden_size)
+        self.Why = np.random.randn(output_size, 2*hidden_size) * 0.1
+        self.by  = np.zeros((output_size, 1))
+
+        self.last_concats = []
 
     def get_params(self):
             
@@ -179,10 +183,7 @@ class BiLSTM:
         return self.get_params()
 
 
-        self.Why = np.random.randn(output_size, 2*hidden_size) * 0.1
-        self.by  = np.zeros((output_size, 1))
-
-        self.last_concats = []
+        
 
     def forward(self, inputs):
         T = len(inputs)
