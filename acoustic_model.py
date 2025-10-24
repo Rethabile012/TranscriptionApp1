@@ -145,74 +145,72 @@ class LSTMCell:
 
 class BiLSTM:
     def __init__(self, input_size, hidden_size, output_size):
-        self.input_size = input_size
         self.hidden_size = hidden_size
+        self.input_size = input_size
         self.output_size = output_size
 
-        # Simple weight initialization
-        self.Wxh = np.random.randn(2*hidden_size, input_size) * 0.1
-        self.Whh = np.random.randn(2*hidden_size, 2*hidden_size) * 0.1
-        self.bh  = np.zeros((2*hidden_size, 1))
+        # forward and backward LSTM cells
+        self.forward_lstm = LSTMCell(input_size, hidden_size)
+        self.backward_lstm = LSTMCell(input_size, hidden_size)
 
         self.Why = np.random.randn(output_size, 2*hidden_size) * 0.1
         self.by  = np.zeros((output_size, 1))
 
-        self.last_concats = []  # stores hidden states for each timestep
+        self.last_concats = []
 
     def forward(self, inputs):
-        self.last_concats = []
+        T = len(inputs)
+        h_f_prev = np.zeros((self.hidden_size,1))
+        c_f_prev = np.zeros((self.hidden_size,1))
+        h_b_next = np.zeros((self.hidden_size,1))
+        c_b_next = np.zeros((self.hidden_size,1))
+
+        h_forward_seq = []
+        h_backward_seq = []
+
+        # forward LSTM
+        for t in range(T):
+            h_f, c_f = self.forward_lstm.forward(inputs[t], h_f_prev, c_f_prev)
+            h_forward_seq.append(h_f)
+            h_f_prev, c_f_prev = h_f, c_f
+
+        # backward LSTM
+        for t in reversed(range(T)):
+            h_b, c_b = self.backward_lstm.forward(inputs[t], h_b_next, c_b_next)
+            h_backward_seq.insert(0, h_b)
+            h_b_next, c_b_next = h_b, c_b
+
         outputs = []
+        self.last_concats = []
 
-        for x in inputs:  # x shape: (input_size, 1)
-            # forward LSTM hidden (fake demo)
-            h_forward = np.tanh(np.random.randn(self.hidden_size, 1))  
-            # backward LSTM hidden (fake demo)
-            h_backward = np.tanh(np.random.randn(self.hidden_size, 1))
-            
-            h = np.vstack([h_forward, h_backward])  # shape (2*hidden_size, 1)
+        for t in range(T):
+            h = np.vstack([h_forward_seq[t], h_backward_seq[t]])  # (2*hidden_size,1)
             self.last_concats.append(h)
-
-            y = self.Why @ h + self.by  # shape (V, 1)
+            y = self.Why @ h + self.by  # (V,1)
             outputs.append(y)
 
         return outputs
 
     def backward(self, dY_list):
-        # Accumulate gradients
-        dWx = np.zeros_like(self.Wxh)
-        dWh = np.zeros_like(self.Whh)
         dWhy = np.zeros_like(self.Why)
-        dbh = np.zeros_like(self.bh)
         dby = np.zeros_like(self.by)
 
+        dh_forward_seq = [np.zeros((self.hidden_size,1)) for _ in range(len(dY_list))]
+        dh_backward_seq = [np.zeros((self.hidden_size,1)) for _ in range(len(dY_list))]
+
         for t in reversed(range(len(self.last_concats))):
-            h = self.last_concats[t]  # shape (2*hidden_size,1)
-            dy = dY_list[t]           # shape (V,1)
-            
-            # Gradients for output layer
-            dWhy += dy @ h.T           # (V, 2*hidden_size)
+            h = self.last_concats[t]
+            dy = dY_list[t]
+
+            dWhy += dy @ h.T
             dby  += dy
 
-            # Gradients w.r.t hidden (for demonstration)
-            dh = self.Why.T @ dy       # (2*hidden_size,1)
-            dh_raw = (1 - h**2) * dh   # tanh derivative
+            dh = self.Why.T @ dy  # split for forward/backward
+            dh_forward_seq[t] += dh[:self.hidden_size]
+            dh_backward_seq[t] += dh[self.hidden_size:]
 
-            dWx += dh_raw @ (h.T)      # simple demonstration, replace with actual LSTM cell if needed
-            dbh += dh_raw
+        # propagate through LSTM cells
+        self.forward_lstm.backward_through_time(dh_forward_seq)
+        self.backward_lstm.backward_through_time(dh_backward_seq)
 
-        # Return gradients (or apply optimizer update)
-        grads = {
-            "Wxh": dWx,
-            "Whh": dWh,
-            "bh": dbh,
-            "Why": dWhy,
-            "by": dby
-        }
-        return grads
-
-    def get_params(self):
-        return {"Wxh": self.Wxh, "Whh": self.Whh, "bh": self.bh,
-                "Why": self.Why, "by": self.by}
-
-    def get_weights(self):
-        return self.get_params()
+        return {"Why": dWhy, "by": dby}
