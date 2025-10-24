@@ -152,15 +152,15 @@ class BiLSTM:
         self.by = np.zeros((output_size, 1))
 
     def get_params(self):
-        # Return all trainable parameters as a list
-        params = [
-            self.fwd_cell.Wf, self.fwd_cell.Wi, self.fwd_cell.Wc, self.fwd_cell.Wo,
-            self.fwd_cell.bf, self.fwd_cell.bi, self.fwd_cell.bc, self.fwd_cell.bo,
-            self.bwd_cell.Wf, self.bwd_cell.Wi, self.bwd_cell.Wc, self.bwd_cell.Wo,
-            self.bwd_cell.bf, self.bwd_cell.bi, self.bwd_cell.bc, self.bwd_cell.bo,
+        # Return all trainable parameters as a list for optimizer
+        return [
+            self.forward_lstm.Wf, self.forward_lstm.Wi, self.forward_lstm.Wc, self.forward_lstm.Wo,
+            self.forward_lstm.bf, self.forward_lstm.bi, self.forward_lstm.bc, self.forward_lstm.bo,
+            self.backward_lstm.Wf, self.backward_lstm.Wi, self.backward_lstm.Wc, self.backward_lstm.Wo,
+            self.backward_lstm.bf, self.backward_lstm.bi, self.backward_lstm.bc, self.backward_lstm.bo,
             self.Wy, self.by
         ]
-        return params
+        
     def get_grads(self):
         # Return gradients in same order as get_params()
         return [
