@@ -219,7 +219,7 @@ class BiLSTM:
             y_probs = y_probs.reshape(1, -1)  # shape (1, V)
         return y_probs
 
-    def backward(self, targets):
+    def backward(self, y_probs, targets, input_lengths=None, target_lengths=None):
         T = len(self.last_outputs)
         assert T == len(targets), "targets length must match outputs length"
 

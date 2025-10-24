@@ -100,7 +100,7 @@ class Dataset:
                         transcript_text = self.load_text(transcript_path)
 
                         test_data.append((mfcc, transcript_text))
-                        print(f"Loaded test pair: {filename} -> {len(transcript_text.split())} words")
+                        print(f"Loaded test pair: {filename} -> {len(transcript_text.split())} characters")
                     except Exception as e:
                         print(f"Failed to process {audio_path}: {e}")
 
