@@ -161,10 +161,30 @@ class BiLSTM:
             self.Wy, self.by
         ]
         return params
+    def get_grads(self):
+        # Return gradients in same order as get_params()
+        return [
+            self.forward_lstm.dWf, self.forward_lstm.dWi, self.forward_lstm.dWc, self.forward_lstm.dWo,
+            self.forward_lstm.dbf, self.forward_lstm.dbi, self.forward_lstm.dbc, self.forward_lstm.dbo,
+            self.backward_lstm.dWf, self.backward_lstm.dWi, self.backward_lstm.dWc, self.backward_lstm.dWo,
+            self.backward_lstm.dbf, self.backward_lstm.dbi, self.backward_lstm.dbc, self.backward_lstm.dbo,
+            self.dWy, self.dby
+        ]
+
+    def get_weights(self):
+        # For saving/loading model
+        return {
+            "forward_lstm_Wf": self.forward_lstm.Wf, "forward_lstm_Wi": self.forward_lstm.Wi,
+            "forward_lstm_Wc": self.forward_lstm.Wc, "forward_lstm_Wo": self.forward_lstm.Wo,
+            "forward_lstm_bf": self.forward_lstm.bf, "forward_lstm_bi": self.forward_lstm.bi,
+            "forward_lstm_bc": self.forward_lstm.bc, "forward_lstm_bo": self.forward_lstm.bo,
+            "backward_lstm_Wf": self.backward_lstm.Wf, "backward_lstm_Wi": self.backward_lstm.Wi,
+            "backward_lstm_Wc": self.backward_lstm.Wc, "backward_lstm_Wo": self.backward_lstm.Wo,
+            "backward_lstm_bf": self.backward_lstm.bf, "backward_lstm_bi": self.backward_lstm.bi,
+            "backward_lstm_bc": self.backward_lstm.bc, "backward_lstm_bo": self.backward_lstm.bo,
+            "Wy": self.Wy, "by": self.by
+        }   
         
-        # Fully connected layer for classification (hidden*2 → vocab size)
-        self.Wy = np.random.randn(output_size, hidden_size * 2) * 0.1
-        self.by = np.zeros((output_size, 1))
     
     def softmax(self, x):
         e_x = np.exp(x - np.max(x))
