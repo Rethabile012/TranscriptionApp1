@@ -113,8 +113,8 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
 
             # Compute CTC loss
             ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
-            grads = ctc_loss_fn.backward()  # Get gradients from your CTC loss (must be implemented)
-            model.backward(grads)  # Backprop through model (must be implemented)
+            #grads = ctc_loss_fn.backward()  # Get gradients from your CTC loss (must be implemented)
+            #model.backward(grads)  # Backprop through model (must be implemented)
 
             # Update model parameters with your optimizer
             optimizer.update(model.get_weights(), model.get_grads())
