@@ -5,7 +5,7 @@ from decoder import CEDecoder
 from ctcloss import CTCLoss
 
 class AdamOptimizer:
-    def __init__(self,params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self, params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
         self.params = params
         self.lr = lr
         self.beta1 = beta1
@@ -43,7 +43,7 @@ class TextEncoder:
         return [self.char2idx[ch] for ch in text.lower() if ch in self.char2idx]
 
     def indices_to_text(self, indices):
-        return "".join(self.idx2char[i] for i in indices if i in self.idx2char)  # joins indices to single string
+        return "".join(self.idx2char[i] for i in indices if i in self.idx2char)
 
 
 def cer(ref, hyp):
@@ -62,8 +62,8 @@ def cer(ref, hyp):
                 dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
     return dp[m][n] / max(m, 1)
 
+
 def softmax_rows(x):
-    # x: (T, V)
     e = np.exp(x - np.max(x, axis=1, keepdims=True))
     return e / np.sum(e, axis=1, keepdims=True)
 
@@ -76,7 +76,6 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
     dataset = Dataset()
     train_data = dataset.get_all_data()
     val_data = dataset.get_validation_data()
-    #test_data = dataset.get_test_data()
 
     encoder = TextEncoder()
     decoder = CEDecoder(encoder.idx2char)
@@ -85,6 +84,9 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
 
     model = BiLSTM(input_size, hidden_size, output_size)
     ctc_loss_fn = CTCLoss(blank=encoder.blank)
+
+    # Initialize your custom Adam optimizer
+    optimizer = AdamOptimizer(model.get_weights(), lr=lr)
 
     best_val_cer = float("inf")
     history = {"train_loss": [], "train_cer": [], "val_cer": []}
@@ -97,29 +99,27 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             if not transcript.strip():
                 continue
 
-            # Prepare inputs
             inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
-            outputs = model.forward(inputs)  # list of (V,1) per timestep
-            y_probs = np.hstack(outputs).T   # (T, V)
+            outputs = model.forward(inputs)
+            y_probs = np.hstack(outputs).T
+            y_probs = softmax_rows(y_probs)
 
-            # Softmax manually
-            y_probs = np.exp(y_probs - np.max(y_probs, axis=1, keepdims=True))
-            y_probs /= np.sum(y_probs, axis=1, keepdims=True)
-
-            # Encode target text
             target_indices = encoder.text_to_indices(transcript)
             if not target_indices:
                 continue
 
-            # Input and target lengths for CTC
             input_lengths = [len(inputs)]
             target_lengths = [len(target_indices)]
 
             # Compute CTC loss
             ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
-            total_loss += ctc_loss
+            grads = ctc_loss_fn.backward()  # Get gradients from your CTC loss (must be implemented)
+            model.backward(grads)  # Backprop through model (must be implemented)
 
-            # Compute CER
+            # Update model parameters with your optimizer
+            optimizer.update(model.get_weights(), model.get_grads())
+
+            total_loss += ctc_loss
             pred_indices = np.argmax(y_probs, axis=1)
             pred_text = encoder.indices_to_text(pred_indices)
             total_cer += cer(transcript, pred_text)
@@ -137,10 +137,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
 
             inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
             outputs = model.forward(inputs)
-            y_probs = np.hstack(outputs).T
-            y_probs = np.exp(y_probs - np.max(y_probs, axis=1, keepdims=True))
-            y_probs /= np.sum(y_probs, axis=1, keepdims=True)
-
+            y_probs = softmax_rows(np.hstack(outputs).T)
             pred_text = decoder.greedy_decode(y_probs)
             val_cer += cer(transcript, pred_text)
             val_count += 1
@@ -153,14 +150,12 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
         history["val_cer"].append(avg_val_cer)
         np.savez(history_path, **history)
 
-        # Save best model
         if avg_val_cer < best_val_cer:
             best_val_cer = avg_val_cer
             np.savez(save_path, **model.get_weights())
             print(f"Model improved! Saved with CER={avg_val_cer:.4f}")
 
     print("Training complete!")
-
 
 
 if __name__ == "__main__":
