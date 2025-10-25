@@ -85,7 +85,6 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
 
     model = BiLSTM(input_size, hidden_size, output_size)
     ctc_loss_fn = CTCLoss(blank=encoder.blank)
-    optimizer = AdamOptimizer(params=model.get_params(), lr=lr)
 
     best_val_cer = float("inf")
     history = {"train_loss": [], "train_cer": [], "val_cer": []}
