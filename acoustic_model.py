@@ -183,8 +183,6 @@ class BiLSTM:
         return self.get_params()
 
 
-        
-
     def forward(self, inputs):
         T = len(inputs)
         h_f_prev = np.zeros((self.hidden_size,1))
