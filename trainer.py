@@ -6,7 +6,7 @@ from ctcloss import CTCLoss
 
 
 class AdamOptimizer:
-    def __init__(self, params, lr=0.0005, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self, params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
         self.params = params
         self.lr = lr
         self.beta1 = beta1
@@ -19,15 +19,17 @@ class AdamOptimizer:
     def update(self, params: dict, grads: dict):
         self.t += 1
         for key in params.keys():
-            g = grads[key].astype(np.float32)
-            g = np.clip(g, -1.0, 1.0)  # gradient clipping
+            g = grads[key]
             if key not in self.m:
                 self.m[key] = np.zeros_like(g)
                 self.v[key] = np.zeros_like(g)
+
             self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * g
             self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * (g * g)
+
             m_hat = self.m[key] / (1 - self.beta1 ** self.t)
             v_hat = self.v[key] / (1 - self.beta2 ** self.t)
+
             params[key] -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
 
@@ -63,15 +65,11 @@ def cer(ref, hyp):
 
 
 def softmax_rows(x):
-    # numerically stable softmax
-    x = x - np.max(x, axis=1, keepdims=True)
-    e = np.exp(x)
-    s = np.sum(e, axis=1, keepdims=True)
-    s[s == 0] = 1e-8
-    return e / s
+    e = np.exp(x - np.max(x, axis=1, keepdims=True))
+    return e / np.sum(e, axis=1, keepdims=True)
 
 
-def train_model(epochs=50, hidden_size=256, lr=0.0005,
+def train_model(epochs=5, hidden_size=256, lr=0.001,
                 save_path="acoustic_model_best.npz",
                 history_path="training_history.npz"):
 
@@ -94,15 +92,21 @@ def train_model(epochs=50, hidden_size=256, lr=0.0005,
     history = {"train_loss": [], "train_cer": [], "val_cer": []}
 
     print(f"Starting training for {epochs} epochs...")
+
     for epoch in range(epochs):
+        print(f"\n=== Epoch {epoch+1}/{epochs} ===")
+
         total_loss, total_cer, count = 0, 0, 0
+
+        # Step 1: track weight changes
+        first_weight_before = list(model.get_weights().values())[0].flatten()[0]
+        print(f"First weight BEFORE update: {first_weight_before}")
 
         for mfcc, transcript in train_data:
             if not transcript.strip():
                 continue
 
-            inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32)
-                      for t in range(mfcc.shape[1])]
+            inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
             outputs = model.forward(inputs)
             y_probs = np.hstack(outputs).T
             y_probs = softmax_rows(y_probs)
@@ -114,20 +118,22 @@ def train_model(epochs=50, hidden_size=256, lr=0.0005,
             input_lengths = [len(inputs)]
             target_lengths = [len(target_indices)]
 
-            # Compute CTC loss
+            # Forward CTC loss
             ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
 
-            # Skip updates with invalid loss
-            if not np.isfinite(ctc_loss) or ctc_loss > 1e6:
-                print(f"Warning: Skipping unstable sample with loss {ctc_loss}")
-                continue
+            # Step 2: dummy gradient check (replace with real backprop later)
+            grads = model.get_params()  # assumed to return gradients
 
-            # (When backward implemented, grads will come here)
-            optimizer.update(model.get_weights(), model.get_params())
+            grad_sample = list(grads.values())[0]
+            if np.all(grad_sample == 0):
+                print("⚠️ Gradients are all zeros — no learning signal!")
+            elif np.isnan(grad_sample).any():
+                print("⚠️ Gradients contain NaN — numerical issue!")
+            else:
+                print("✅ Gradients look valid (non-zero).")
 
-            # Clear caches to save memory
-            model.forward_lstm.caches.clear()
-            model.backward_lstm.caches.clear()
+            # Update parameters
+            optimizer.update(model.get_weights(), grads)
 
             total_loss += ctc_loss
             pred_indices = np.argmax(y_probs, axis=1)
@@ -135,32 +141,35 @@ def train_model(epochs=50, hidden_size=256, lr=0.0005,
             total_cer += cer(transcript, pred_text)
             count += 1
 
+        # Step 1 (cont.): check if weights changed
+        first_weight_after = list(model.get_weights().values())[0].flatten()[0]
+        print(f"First weight AFTER update:  {first_weight_after}")
+
+        if np.isclose(first_weight_before, first_weight_after):
+            print("⚠️ Weights did not change — optimizer or grads may be wrong!")
+        else:
+            print("✅ Weights are changing — updates are happening.")
+
         avg_loss = total_loss / max(count, 1)
         avg_cer = total_cer / max(count, 1)
         print(f"[TRAIN] Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, CER: {avg_cer:.4f}")
 
-        # Validation phase
+        # Validation
         val_cer, val_count = 0, 0
         for mfcc, transcript in val_data:
             if not transcript.strip():
                 continue
 
-            inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32)
-                      for t in range(mfcc.shape[1])]
+            inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
             outputs = model.forward(inputs)
             y_probs = softmax_rows(np.hstack(outputs).T)
             pred_text = decoder.greedy_decode(y_probs)
             val_cer += cer(transcript, pred_text)
             val_count += 1
 
-            # Free validation caches
-            model.forward_lstm.caches.clear()
-            model.backward_lstm.caches.clear()
-
         avg_val_cer = val_cer / max(val_count, 1)
         print(f"[VAL] Epoch {epoch+1}/{epochs} - CER: {avg_val_cer:.4f}")
 
-        # Track and save
         history["train_loss"].append(avg_loss)
         history["train_cer"].append(avg_cer)
         history["val_cer"].append(avg_val_cer)
@@ -175,4 +184,4 @@ def train_model(epochs=50, hidden_size=256, lr=0.0005,
 
 
 if __name__ == "__main__":
-    train_model(epochs=50, hidden_size=256, lr=0.0005)
+    train_model(epochs=5, hidden_size=256, lr=0.005)
