@@ -4,8 +4,9 @@ from acoustic_model import BiLSTM
 from decoder import CEDecoder
 from ctcloss import CTCLoss
 
+
 class AdamOptimizer:
-    def __init__(self, params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self, params, lr=0.0005, beta1=0.9, beta2=0.999, epsilon=1e-8):
         self.params = params
         self.lr = lr
         self.beta1 = beta1
@@ -18,17 +19,15 @@ class AdamOptimizer:
     def update(self, params: dict, grads: dict):
         self.t += 1
         for key in params.keys():
-            g = grads[key]
+            g = grads[key].astype(np.float32)
+            g = np.clip(g, -1.0, 1.0)  # gradient clipping
             if key not in self.m:
                 self.m[key] = np.zeros_like(g)
                 self.v[key] = np.zeros_like(g)
-
             self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * g
             self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * (g * g)
-
             m_hat = self.m[key] / (1 - self.beta1 ** self.t)
             v_hat = self.v[key] / (1 - self.beta2 ** self.t)
-
             params[key] -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
 
@@ -64,14 +63,17 @@ def cer(ref, hyp):
 
 
 def softmax_rows(x):
-    e = np.exp(x - np.max(x, axis=1, keepdims=True))
-    return e / np.sum(e, axis=1, keepdims=True)
+    # numerically stable softmax
+    x = x - np.max(x, axis=1, keepdims=True)
+    e = np.exp(x)
+    s = np.sum(e, axis=1, keepdims=True)
+    s[s == 0] = 1e-8
+    return e / s
 
 
-def train_model(epochs=50, hidden_size=128, lr=0.001,
+def train_model(epochs=50, hidden_size=256, lr=0.0005,
                 save_path="acoustic_model_best.npz",
-                history_path="training_history.npz",
-                chunk_size=100):
+                history_path="training_history.npz"):
 
     print("Loading dataset...")
     dataset = Dataset()
@@ -85,6 +87,7 @@ def train_model(epochs=50, hidden_size=128, lr=0.001,
 
     model = BiLSTM(input_size, hidden_size, output_size)
     ctc_loss_fn = CTCLoss(blank=encoder.blank)
+
     optimizer = AdamOptimizer(model.get_weights(), lr=lr)
 
     best_val_cer = float("inf")
@@ -98,56 +101,66 @@ def train_model(epochs=50, hidden_size=128, lr=0.001,
             if not transcript.strip():
                 continue
 
-            # process in chunks to save memory
-            num_frames = mfcc.shape[1]
-            for start in range(0, num_frames, chunk_size):
-                end = min(start + chunk_size, num_frames)
-                inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32) for t in range(start, end)]
+            inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32)
+                      for t in range(mfcc.shape[1])]
+            outputs = model.forward(inputs)
+            y_probs = np.hstack(outputs).T
+            y_probs = softmax_rows(y_probs)
 
-                outputs = model.forward(inputs)
-                y_probs = np.hstack(outputs).T
-                y_probs = softmax_rows(y_probs)
+            target_indices = encoder.text_to_indices(transcript)
+            if not target_indices:
+                continue
 
-                target_indices = encoder.text_to_indices(transcript)
-                if not target_indices:
-                    continue
+            input_lengths = [len(inputs)]
+            target_lengths = [len(target_indices)]
 
-                input_lengths = [len(inputs)]
-                target_lengths = [len(target_indices)]
+            # Compute CTC loss
+            ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
 
-                ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
+            # Skip updates with invalid loss
+            if not np.isfinite(ctc_loss) or ctc_loss > 1e6:
+                print(f"Warning: Skipping unstable sample with loss {ctc_loss}")
+                continue
 
-                optimizer.update(model.get_weights(), model.get_params())
+            # (When backward implemented, grads will come here)
+            optimizer.update(model.get_weights(), model.get_params())
 
-                # free cached activations after each batch
-                model.clear_caches()
+            # Clear caches to save memory
+            model.forward_lstm.caches.clear()
+            model.backward_lstm.caches.clear()
 
-                total_loss += ctc_loss
-                pred_indices = np.argmax(y_probs, axis=1)
-                pred_text = encoder.indices_to_text(pred_indices)
-                total_cer += cer(transcript, pred_text)
-                count += 1
+            total_loss += ctc_loss
+            pred_indices = np.argmax(y_probs, axis=1)
+            pred_text = encoder.indices_to_text(pred_indices)
+            total_cer += cer(transcript, pred_text)
+            count += 1
 
         avg_loss = total_loss / max(count, 1)
         avg_cer = total_cer / max(count, 1)
         print(f"[TRAIN] Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, CER: {avg_cer:.4f}")
 
-        # Validation
+        # Validation phase
         val_cer, val_count = 0, 0
         for mfcc, transcript in val_data:
             if not transcript.strip():
                 continue
-            inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32) for t in range(mfcc.shape[1])]
+
+            inputs = [mfcc[:, t].reshape(-1, 1).astype(np.float32)
+                      for t in range(mfcc.shape[1])]
             outputs = model.forward(inputs)
             y_probs = softmax_rows(np.hstack(outputs).T)
             pred_text = decoder.greedy_decode(y_probs)
             val_cer += cer(transcript, pred_text)
             val_count += 1
-            model.clear_caches()
+
+            # Free validation caches
+            model.forward_lstm.caches.clear()
+            model.backward_lstm.caches.clear()
 
         avg_val_cer = val_cer / max(val_count, 1)
         print(f"[VAL] Epoch {epoch+1}/{epochs} - CER: {avg_val_cer:.4f}")
 
+        # Track and save
         history["train_loss"].append(avg_loss)
         history["train_cer"].append(avg_cer)
         history["val_cer"].append(avg_val_cer)
@@ -162,4 +175,4 @@ def train_model(epochs=50, hidden_size=128, lr=0.001,
 
 
 if __name__ == "__main__":
-    train_model(epochs=50, hidden_size=128, lr=0.005)
+    train_model(epochs=50, hidden_size=256, lr=0.0005)
