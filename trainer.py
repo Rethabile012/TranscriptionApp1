@@ -117,7 +117,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
             #model.backward(grads)  # Backprop through model (must be implemented)
 
             # Update model parameters with your optimizer
-            optimizer.update(model.get_weights(), model.get_grads())
+            optimizer.update(model.get_weights(), model.get_params())
 
             total_loss += ctc_loss
             pred_indices = np.argmax(y_probs, axis=1)
