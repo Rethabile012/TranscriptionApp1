@@ -76,7 +76,7 @@ def train_model(epochs=50, hidden_size=256, lr=0.001,
     dataset = Dataset()
     train_data = dataset.get_all_data()
     val_data = dataset.get_validation_data()
-    test_data = dataset.get_test_data()
+    #test_data = dataset.get_test_data()
 
     encoder = TextEncoder()
     decoder = CEDecoder(encoder.idx2char)
