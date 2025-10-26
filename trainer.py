@@ -1,36 +1,31 @@
 import numpy as np
 from dataset import Dataset
-from acoustic_model import BiLSTM
+from acoustic_model import BiLSTM  # <- from-scratch BiLSTM (NumPy version)
 from decoder import CEDecoder
 from ctcloss import CTCLoss
 
 
 class AdamOptimizer:
-    def __init__(self, params, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self, params, lr=0.0005, beta1=0.9, beta2=0.999, epsilon=1e-8):
         self.params = params
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
-        self.m = {}
-        self.v = {}
+        self.m = {k: np.zeros_like(v) for k, v in params.items()}
+        self.v = {k: np.zeros_like(v) for k, v in params.items()}
         self.t = 0
 
-    def update(self, params: dict, grads: dict):
+    def update(self, grads: dict):
         self.t += 1
-        for key in params.keys():
-            g = grads[key]
-            if key not in self.m:
-                self.m[key] = np.zeros_like(g)
-                self.v[key] = np.zeros_like(g)
-
+        for key in self.params.keys():
+            g = grads[key].astype(np.float32)
+            g = np.clip(g, -1.0, 1.0)  # gradient clipping
             self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * g
             self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * (g * g)
-
             m_hat = self.m[key] / (1 - self.beta1 ** self.t)
             v_hat = self.v[key] / (1 - self.beta2 ** self.t)
-
-            params[key] -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
+            self.params[key] -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
 
 class TextEncoder:
@@ -65,13 +60,16 @@ def cer(ref, hyp):
 
 
 def softmax_rows(x):
-    e = np.exp(x - np.max(x, axis=1, keepdims=True))
-    return e / np.sum(e, axis=1, keepdims=True)
+    x = x - np.max(x, axis=1, keepdims=True)
+    e = np.exp(x)
+    s = np.sum(e, axis=1, keepdims=True)
+    s[s == 0] = 1e-8
+    return e / s
 
 
-def train_model(epochs=5, hidden_size=256, lr=0.001,
-                save_path="acoustic_model_best.npz",
-                history_path="training_history.npz"):
+def train_model(epochs=5, hidden_size=128, lr=0.0005,
+                save_path="bilstm_model_best.npz",
+                history_path="bilstm_history.npz"):
 
     print("Loading dataset...")
     dataset = Dataset()
@@ -80,13 +78,21 @@ def train_model(epochs=5, hidden_size=256, lr=0.001,
 
     encoder = TextEncoder()
     decoder = CEDecoder(encoder.idx2char)
-    input_size = 13
+    input_size = 13  # e.g., MFCC feature dim
     output_size = len(encoder.chars)
 
-    model = BiLSTM(input_size, hidden_size, output_size)
+    model = BiLSTM(input_size, hidden_size, output_size, lr=lr)
     ctc_loss_fn = CTCLoss(blank=encoder.blank)
 
-    optimizer = AdamOptimizer(model.get_weights(), lr=lr)
+    # Collect model parameters for optimizer
+    params = {
+        "W_out": model.W_out,
+        "b_out": model.b_out,
+        **{f"fw_{k}": v for k, v in vars(model.forward_lstm).items() if isinstance(v, np.ndarray)},
+        **{f"bw_{k}": v for k, v in vars(model.backward_lstm).items() if isinstance(v, np.ndarray)},
+    }
+
+    optimizer = AdamOptimizer(params, lr=lr)
 
     best_val_cer = float("inf")
     history = {"train_loss": [], "train_cer": [], "val_cer": []}
@@ -94,22 +100,15 @@ def train_model(epochs=5, hidden_size=256, lr=0.001,
     print(f"Starting training for {epochs} epochs...")
 
     for epoch in range(epochs):
-        print(f"\n=== Epoch {epoch+1}/{epochs} ===")
-
         total_loss, total_cer, count = 0, 0, 0
-
-        # Step 1: track weight changes
-        first_weight_before = list(model.get_weights().values())[0].flatten()[0]
-        print(f"First weight BEFORE update: {first_weight_before}")
 
         for mfcc, transcript in train_data:
             if not transcript.strip():
                 continue
 
-            inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
+            inputs = mfcc.T.astype(np.float32)  # shape (seq_len, input_dim)
             outputs = model.forward(inputs)
-            y_probs = np.hstack(outputs).T
-            y_probs = softmax_rows(y_probs)
+            y_probs = softmax_rows(outputs)
 
             target_indices = encoder.text_to_indices(transcript)
             if not target_indices:
@@ -118,22 +117,15 @@ def train_model(epochs=5, hidden_size=256, lr=0.001,
             input_lengths = [len(inputs)]
             target_lengths = [len(target_indices)]
 
-            # Forward CTC loss
             ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
+            if not np.isfinite(ctc_loss) or ctc_loss > 1e6:
+                print(f"Skipping unstable sample with loss {ctc_loss}")
+                continue
 
-            # Step 2: dummy gradient check (replace with real backprop later)
-            grads = model.get_params()  # assumed to return gradients
-
-            grad_sample = list(grads.values())[0]
-            if np.all(grad_sample == 0):
-                print("⚠️ Gradients are all zeros — no learning signal!")
-            elif np.isnan(grad_sample).any():
-                print("⚠️ Gradients contain NaN — numerical issue!")
-            else:
-                print("✅ Gradients look valid (non-zero).")
-
-            # Update parameters
-            optimizer.update(model.get_weights(), grads)
+            # Dummy gradient from loss (for demonstration)
+            d_logits = y_probs - np.eye(y_probs.shape[1])[np.array(target_indices[:y_probs.shape[0]])]
+            grads = model.backward(d_logits)
+            optimizer.update(grads)
 
             total_loss += ctc_loss
             pred_indices = np.argmax(y_probs, axis=1)
@@ -141,33 +133,24 @@ def train_model(epochs=5, hidden_size=256, lr=0.001,
             total_cer += cer(transcript, pred_text)
             count += 1
 
-        # Step 1 (cont.): check if weights changed
-        first_weight_after = list(model.get_weights().values())[0].flatten()[0]
-        print(f"First weight AFTER update:  {first_weight_after}")
-
-        if np.isclose(first_weight_before, first_weight_after):
-            print("⚠️ Weights did not change — optimizer or grads may be wrong!")
-        else:
-            print("✅ Weights are changing — updates are happening.")
-
         avg_loss = total_loss / max(count, 1)
         avg_cer = total_cer / max(count, 1)
         print(f"[TRAIN] Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, CER: {avg_cer:.4f}")
 
         # Validation
-        val_cer, val_count = 0, 0
+        val_cer_total, val_count = 0, 0
         for mfcc, transcript in val_data:
             if not transcript.strip():
                 continue
 
-            inputs = [mfcc[:, t].reshape(-1, 1) for t in range(mfcc.shape[1])]
+            inputs = mfcc.T.astype(np.float32)
             outputs = model.forward(inputs)
-            y_probs = softmax_rows(np.hstack(outputs).T)
+            y_probs = softmax_rows(outputs)
             pred_text = decoder.greedy_decode(y_probs)
-            val_cer += cer(transcript, pred_text)
+            val_cer_total += cer(transcript, pred_text)
             val_count += 1
 
-        avg_val_cer = val_cer / max(val_count, 1)
+        avg_val_cer = val_cer_total / max(val_count, 1)
         print(f"[VAL] Epoch {epoch+1}/{epochs} - CER: {avg_val_cer:.4f}")
 
         history["train_loss"].append(avg_loss)
@@ -177,11 +160,11 @@ def train_model(epochs=5, hidden_size=256, lr=0.001,
 
         if avg_val_cer < best_val_cer:
             best_val_cer = avg_val_cer
-            np.savez(save_path, **model.get_weights())
-            print(f"Model improved! Saved with CER={avg_val_cer:.4f}")
+            np.savez(save_path, **params)
+            print(f"✅ Model improved! Saved with CER={avg_val_cer:.4f}")
 
     print("Training complete!")
 
 
 if __name__ == "__main__":
-    train_model(epochs=5, hidden_size=256, lr=0.005)
+    train_model(epochs=5, hidden_size=128, lr=0.0005)
