@@ -1,4 +1,4 @@
-# audio_processor.py
+
 import wave
 import struct
 import numpy as np

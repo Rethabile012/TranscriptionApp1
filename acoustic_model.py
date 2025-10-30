@@ -129,7 +129,6 @@ class BiLSTM:
         return logits
 
     def backward(self, d_logits):
-        # Simple gradient for demonstration
         dW_out = np.dot(d_logits.T, np.concatenate((self.forward_lstm.cache[-1][1].T,
                                                     self.backward_lstm.cache[-1][1].T)))
         db_out = np.sum(d_logits, axis=0, keepdims=True).T

@@ -1,32 +1,7 @@
 import numpy as np
 from dataset import Dataset
-from acoustic_model import BiLSTM  # <- from-scratch BiLSTM (NumPy version)
+from acoustic_model import BiLSTM  
 from decoder import CEDecoder
-from ctcloss import CTCLoss
-
-
-class AdamOptimizer:
-    def __init__(self, params, lr=0.0005, beta1=0.9, beta2=0.999, epsilon=1e-8):
-        self.params = params
-        self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.epsilon = epsilon
-        self.m = {k: np.zeros_like(v) for k, v in params.items()}
-        self.v = {k: np.zeros_like(v) for k, v in params.items()}
-        self.t = 0
-
-    def update(self, grads: dict):
-        self.t += 1
-        for key in self.params.keys():
-            g = grads[key].astype(np.float32)
-            g = np.clip(g, -1.0, 1.0)  # gradient clipping
-            self.m[key] = self.beta1 * self.m[key] + (1 - self.beta1) * g
-            self.v[key] = self.beta2 * self.v[key] + (1 - self.beta2) * (g * g)
-            m_hat = self.m[key] / (1 - self.beta1 ** self.t)
-            v_hat = self.v[key] / (1 - self.beta2 ** self.t)
-            self.params[key] -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
-
 
 class TextEncoder:
     def __init__(self):
@@ -82,7 +57,7 @@ def train_model(epochs=5, hidden_size=128, lr=0.0005,
     output_size = len(encoder.chars)
 
     model = BiLSTM(input_size, hidden_size, output_size, lr=lr)
-    ctc_loss_fn = CTCLoss(blank=encoder.blank)
+    
 
     # Collect model parameters for optimizer
     params = {
@@ -92,7 +67,7 @@ def train_model(epochs=5, hidden_size=128, lr=0.0005,
         **{f"bw_{k}": v for k, v in vars(model.backward_lstm).items() if isinstance(v, np.ndarray)},
     }
 
-    optimizer = AdamOptimizer(params, lr=lr)
+    
 
     best_val_cer = float("inf")
     history = {"train_loss": [], "train_cer": [], "val_cer": []}
@@ -117,17 +92,14 @@ def train_model(epochs=5, hidden_size=128, lr=0.0005,
             input_lengths = [len(inputs)]
             target_lengths = [len(target_indices)]
 
-            ctc_loss = ctc_loss_fn.forward(y_probs, target_indices, input_lengths, target_lengths)
-            if not np.isfinite(ctc_loss) or ctc_loss > 1e6:
-                print(f"Skipping unstable sample with loss {ctc_loss}")
-                continue
-
-            # Dummy gradient from loss (for demonstration)
+            
+            
+            
             d_logits = y_probs - np.eye(y_probs.shape[1])[np.array(target_indices[:y_probs.shape[0]])]
             grads = model.backward(d_logits)
-            optimizer.update(grads)
 
-            total_loss += ctc_loss
+
+            
             pred_indices = np.argmax(y_probs, axis=1)
             pred_text = encoder.indices_to_text(pred_indices)
             total_cer += cer(transcript, pred_text)
@@ -161,7 +133,7 @@ def train_model(epochs=5, hidden_size=128, lr=0.0005,
         if avg_val_cer < best_val_cer:
             best_val_cer = avg_val_cer
             np.savez(save_path, **params)
-            print(f"✅ Model improved! Saved with CER={avg_val_cer:.4f}")
+            print(f"Model improved! Saved with CER={avg_val_cer:.4f}")
 
     print("Training complete!")
 
