@@ -30,11 +30,9 @@ class AudioProcessor:
             raw = wf.readframes(n_frames)
 
         
-        if sampwidth == 1:
-            fmt = "{}B".format(n_frames * n_channels) 
+        if sampwidth == 1: 
             data = np.frombuffer(raw, dtype=np.uint8).astype(np.int16) - 128
         elif sampwidth == 2:
-            fmt = "{}h".format(n_frames * n_channels)  
             data = np.frombuffer(raw, dtype=np.int16)
         else:
             
@@ -44,7 +42,7 @@ class AudioProcessor:
             data = data.reshape(-1, n_channels)
             data = data.mean(axis=1)  # simple mono mix
 
-        # Normalize to float32 in range [-1, 1]
+        
         max_val = float(2 ** (8 * sampwidth - 1))
         signal = data.astype(np.float32) / max_val
 

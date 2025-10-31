@@ -130,7 +130,7 @@ class BiLSTM:
 
     def backward(self, d_logits):
         dW_out = np.dot(d_logits.T, np.concatenate((self.forward_lstm.cache[-1][1].T,
-                                                    self.backward_lstm.cache[-1][1].T)))
+                                                    self.backward_lstm.cache[-1][1].T))) #picks the hidden states of the last time step
         db_out = np.sum(d_logits, axis=0, keepdims=True).T
 
         # Update output weights

@@ -30,7 +30,7 @@ def cer(ref, hyp):
             if ref[i - 1] == hyp[j - 1]:
                 dp[i][j] = dp[i - 1][j - 1]
             else:
-                dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+                dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]) #delete, insert, substitute
     return dp[m][n] / max(m, 1)
 
 
@@ -88,18 +88,8 @@ def train_model(epochs=5, hidden_size=128, lr=0.0005,
             target_indices = encoder.text_to_indices(transcript)
             if not target_indices:
                 continue
-
-            input_lengths = [len(inputs)]
-            target_lengths = [len(target_indices)]
-
             
-            
-            
-            d_logits = y_probs - np.eye(y_probs.shape[1])[np.array(target_indices[:y_probs.shape[0]])]
-            grads = model.backward(d_logits)
-
-
-            
+            y_probs - np.eye(y_probs.shape[1])[np.array(target_indices[:y_probs.shape[0]])]
             pred_indices = np.argmax(y_probs, axis=1)
             pred_text = encoder.indices_to_text(pred_indices)
             total_cer += cer(transcript, pred_text)
